@@ -9,27 +9,23 @@ import (
 )
 
 var (
-	_ IMediator = (*Mediator)(nil)
+	_ IMediator        = (*Mediator)(nil)
+	_ IMediatorBuilder = (*Mediator)(nil)
 
 	ErrorNotEventHandler   = "not found handler for this event"
 	ErrorNotCommandHandler = "not found handler for this command"
 	ErrorContextTimeout    = "context time out"
 )
 
-// MediatorCtor...
-func MediatorCtor() func(pool IRoutinePool) IMediator {
-	return New
-}
-
-// Mediator...
+// Mediator ...
 type Mediator struct {
 	eventHandlerMap   map[reflect.Type]INotificationHandler
 	commandHandlerMap map[reflect.Type]IRequestHandler
 	pool              IRoutinePool
 }
 
-// New...
-func New(pool IRoutinePool) IMediator {
+// New ...
+func New(pool IRoutinePool) IMediatorBuilder {
 	return &Mediator{
 		eventHandlerMap:   make(map[reflect.Type]INotificationHandler),
 		commandHandlerMap: make(map[reflect.Type]IRequestHandler),
@@ -37,7 +33,7 @@ func New(pool IRoutinePool) IMediator {
 	}
 }
 
-// Publish...
+// Publish ...
 func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 	handler, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
@@ -56,11 +52,11 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 	return err
 }
 
-// Send...
+// Send ...
 func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, error) {
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type()))
+		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, command.Type()))
 	}
 
 	done := make(chan struct{})
@@ -78,14 +74,19 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 	return data, err
 }
 
-// RegisterEventHandler...
-func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) *Mediator {
+// RegisterEventHandler ...
+func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder {
 	m.eventHandlerMap[matchingType] = eventHandler
 	return m
 }
 
-// RegisterCommandHandler...
-func (m *Mediator) RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) *Mediator {
+// RegisterCommandHandler ...
+func (m *Mediator) RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder {
 	m.commandHandlerMap[matchingType] = commandHandler
+	return m
+}
+
+// Build ...
+func (m *Mediator) Build() IMediator {
 	return m
 }

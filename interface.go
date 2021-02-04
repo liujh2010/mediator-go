@@ -31,15 +31,14 @@ type IMediator interface {
 	Send(ctx context.Context, command IRequest) (interface{}, error)
 }
 
+type IMediatorBuilder interface {
+	RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder
+	RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder
+	Build() IMediator
+}
+
 type ITask func()
 
 type IRoutinePool interface {
 	Publish(t ITask) error
-	PublishWithResult(t ITask) (interface{}, error)
-}
-
-type ILogger interface {
-	Info(args ...interface{})
-	Warn(args ...interface{})
-	Error(args ...interface{})
 }
