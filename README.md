@@ -1,2 +1,2 @@
 # mediator-go
-A in-process messaging lib for decoupling complex logic.
+An in-process messaging lib for decoupling complex logic.
