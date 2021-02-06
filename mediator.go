@@ -48,8 +48,12 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 		close(done)
 	})
 
-	<-done
-	return err
+	select {
+	case <-done:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Send ...
@@ -70,8 +74,12 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 		close(done)
 	})
 
-	<-done
-	return data, err
+	select {
+	case <-done:
+		return data, err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // RegisterEventHandler ...
