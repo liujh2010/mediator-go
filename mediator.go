@@ -24,6 +24,9 @@ const (
 
 	// ErrorContextTimeout ...
 	ErrorContextTimeout = "context time out"
+
+	// ErrorInvalidArgument ...
+	ErrorInvalidArgument = "invalid argument"
 )
 
 // Mediator ...
@@ -36,6 +39,9 @@ type Mediator struct {
 
 // New ...
 func New(pool IRoutinePool) IMediatorBuilder {
+	if pool == nil {
+		panic("invalid argument pool")
+	}
 	return &Mediator{
 		mut:               &sync.Mutex{},
 		eventHandlerMap:   make(map[reflect.Type][]INotificationHandler),
@@ -46,6 +52,10 @@ func New(pool IRoutinePool) IMediatorBuilder {
 
 // Publish ...
 func (m *Mediator) Publish(ctx context.Context, event INotification) error {
+	if ctx == nil || event == nil {
+		return errors.New((ErrorInvalidArgument + " ctx or event"))
+	}
+
 	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
 		return errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String()))
@@ -82,6 +92,10 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 
 // Send ...
 func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, error) {
+	if ctx == nil || command == nil {
+		return nil, errors.New(ErrorInvalidArgument + " ctx or command")
+	}
+
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
 		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
@@ -108,6 +122,10 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 
 // RegisterEventHandler ...
 func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder {
+	if matchingType == nil || eventHandler == nil {
+		panic(errors.New(ErrorInvalidArgument + " matchingType or eventHandler"))
+	}
+
 	m.mutex(func() {
 		m.eventHandlerMap[matchingType] = append(m.eventHandlerMap[matchingType], eventHandler)
 	})
@@ -116,6 +134,10 @@ func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler 
 
 // RegisterCommandHandler ...
 func (m *Mediator) RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder {
+	if matchingType == nil || commandHandler == nil {
+		panic(errors.New(ErrorInvalidArgument + " matchingType or commandHandler"))
+	}
+
 	m.mutex(func() {
 		m.commandHandlerMap[matchingType] = commandHandler
 	})

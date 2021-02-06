@@ -425,10 +425,56 @@ func TestMediator(t *testing.T) {
 	})
 
 	t.Run("register event validation test", func(t *testing.T) {
-		// TODO
+		defer func() {
+			err := recover()
+			if err == nil {
+				t.Error("expect panic when using nil")
+			}
+
+			if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
+				t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+			}
+		}()
+
+		mediator.(IMediatorBuilder).RegisterEventHandler(nil, nil)
 	})
 
 	t.Run("register command validation test", func(t *testing.T) {
-		// TODO
+		defer func() {
+			err := recover()
+			if err == nil {
+				t.Error("expect panic when using nil")
+			}
+
+			if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
+				t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+			}
+		}()
+
+		mediator.(IMediatorBuilder).RegisterCommandHandler(nil, new(TestCommand1Handler))
+	})
+
+	t.Run("publish event validation test", func(t *testing.T) {
+		err := mediator.Publish(context.TODO(), nil)
+
+		if err == nil {
+			t.Error("expect error when using nil")
+		}
+
+		if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
+			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+		}
+	})
+
+	t.Run("send command validation test", func(t *testing.T) {
+		_, err := mediator.Send(nil, new(TestCommand1))
+
+		if err == nil {
+			t.Error("expect error when using nil")
+		}
+
+		if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
+			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+		}
 	})
 }
