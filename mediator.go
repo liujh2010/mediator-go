@@ -48,7 +48,7 @@ func New(pool IRoutinePool) IMediatorBuilder {
 func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
-		return errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type()))
+		return errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String()))
 	}
 
 	var (
@@ -84,7 +84,7 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, error) {
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, command.Type()))
+		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
 	}
 
 	done := make(chan struct{})
