@@ -28,6 +28,7 @@ const (
 
 // Mediator ...
 type Mediator struct {
+	mut               *sync.Mutex
 	eventHandlerMap   map[reflect.Type][]INotificationHandler
 	commandHandlerMap map[reflect.Type]IRequestHandler
 	pool              IRoutinePool
@@ -36,6 +37,7 @@ type Mediator struct {
 // New ...
 func New(pool IRoutinePool) IMediatorBuilder {
 	return &Mediator{
+		mut:               &sync.Mutex{},
 		eventHandlerMap:   make(map[reflect.Type][]INotificationHandler),
 		commandHandlerMap: make(map[reflect.Type]IRequestHandler),
 		pool:              pool,
@@ -55,13 +57,19 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 	)
 
 	for _, handler := range handlers {
+
 		done := make(chan struct{})
 		doneSilce = append(doneSilce, done)
-		m.pool.Publish(func() {
-			err := handler.Handle(event)
-			errNoti.add(err)
-			close(done)
-		})
+
+		func(h INotificationHandler) {
+
+			m.pool.Publish(func() {
+				err := h.Handle(event)
+				errNoti.add(err)
+				close(done)
+			})
+
+		}(handler)
 	}
 
 	select {
@@ -100,23 +108,29 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 
 // RegisterEventHandler ...
 func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder {
-	handlerSlice, ok := m.eventHandlerMap[matchingType]
-	handlerSlice = append(handlerSlice, eventHandler)
-	if !ok {
-		m.eventHandlerMap[matchingType] = handlerSlice
-	}
+	m.mutex(func() {
+		m.eventHandlerMap[matchingType] = append(m.eventHandlerMap[matchingType], eventHandler)
+	})
 	return m
 }
 
 // RegisterCommandHandler ...
 func (m *Mediator) RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder {
-	m.commandHandlerMap[matchingType] = commandHandler
+	m.mutex(func() {
+		m.commandHandlerMap[matchingType] = commandHandler
+	})
 	return m
 }
 
 // Build ...
 func (m *Mediator) Build() IMediator {
 	return m
+}
+
+func (m *Mediator) mutex(fn func()) {
+	m.mut.Lock()
+	fn()
+	m.mut.Unlock()
 }
 
 func waitAllDone(doneSlice []chan struct{}) <-chan struct{} {
