@@ -4,22 +4,31 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/pkg/errors"
+	"go.uber.org/multierr"
 )
 
 var (
 	_ IMediator        = (*Mediator)(nil)
 	_ IMediatorBuilder = (*Mediator)(nil)
+)
 
-	ErrorNotEventHandler   = "not found handler for this event"
+const (
+	// ErrorNotEventHandler ...
+	ErrorNotEventHandler = "not found handler for this event"
+
+	// ErrorNotCommandHandler ...
 	ErrorNotCommandHandler = "not found handler for this command"
-	ErrorContextTimeout    = "context time out"
+
+	// ErrorContextTimeout ...
+	ErrorContextTimeout = "context time out"
 )
 
 // Mediator ...
 type Mediator struct {
-	eventHandlerMap   map[reflect.Type]INotificationHandler
+	eventHandlerMap   map[reflect.Type][]INotificationHandler
 	commandHandlerMap map[reflect.Type]IRequestHandler
 	pool              IRoutinePool
 }
@@ -27,7 +36,7 @@ type Mediator struct {
 // New ...
 func New(pool IRoutinePool) IMediatorBuilder {
 	return &Mediator{
-		eventHandlerMap:   make(map[reflect.Type]INotificationHandler),
+		eventHandlerMap:   make(map[reflect.Type][]INotificationHandler),
 		commandHandlerMap: make(map[reflect.Type]IRequestHandler),
 		pool:              pool,
 	}
@@ -35,22 +44,29 @@ func New(pool IRoutinePool) IMediatorBuilder {
 
 // Publish ...
 func (m *Mediator) Publish(ctx context.Context, event INotification) error {
-	handler, ok := m.eventHandlerMap[event.Type()]
+	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
 		return errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type()))
 	}
 
-	done := make(chan struct{})
-	var err error
+	var (
+		doneSilce []chan struct{}
+		errNoti   = newErrorNotifacation()
+	)
 
-	m.pool.Publish(func() {
-		err = handler.Handle(event)
-		close(done)
-	})
+	for _, handler := range handlers {
+		done := make(chan struct{})
+		doneSilce = append(doneSilce, done)
+		m.pool.Publish(func() {
+			err := handler.Handle(event)
+			errNoti.add(err)
+			close(done)
+		})
+	}
 
 	select {
-	case <-done:
-		return err
+	case <-waitAllDone(doneSilce):
+		return errNoti.ToSingleError()
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -84,7 +100,11 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 
 // RegisterEventHandler ...
 func (m *Mediator) RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder {
-	m.eventHandlerMap[matchingType] = eventHandler
+	handlerSlice, ok := m.eventHandlerMap[matchingType]
+	handlerSlice = append(handlerSlice, eventHandler)
+	if !ok {
+		m.eventHandlerMap[matchingType] = handlerSlice
+	}
 	return m
 }
 
@@ -97,4 +117,56 @@ func (m *Mediator) RegisterCommandHandler(matchingType reflect.Type, commandHand
 // Build ...
 func (m *Mediator) Build() IMediator {
 	return m
+}
+
+func waitAllDone(doneSlice []chan struct{}) <-chan struct{} {
+	allDone := make(chan struct{})
+	go func() {
+		for _, done := range doneSlice {
+			<-done
+		}
+		close(allDone)
+	}()
+	return allDone
+}
+
+// ErrorNotification ...
+type ErrorNotification struct {
+	mut    *sync.Mutex
+	errors []error
+}
+
+func newErrorNotifacation() *ErrorNotification {
+	return &ErrorNotification{
+		mut: &sync.Mutex{},
+	}
+}
+
+func (e *ErrorNotification) add(err error) {
+	if err == nil {
+		return
+	}
+
+	e.mut.Lock()
+	e.errors = append(e.errors, err)
+	e.mut.Unlock()
+}
+
+// HasError ...
+func (e *ErrorNotification) HasError() bool {
+	return len(e.errors) > 0
+}
+
+// Errors ...
+func (e *ErrorNotification) Errors() []error {
+	return e.errors
+}
+
+// ToSingleError ...
+func (e *ErrorNotification) ToSingleError() error {
+	return multierr.Combine(e.errors...)
+}
+
+func (e *ErrorNotification) Error() string {
+	return multierr.Combine(e.errors...).Error()
 }
