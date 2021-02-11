@@ -24,8 +24,7 @@ type TestEvent1 struct {
 	msg string
 }
 
-type TestEvent1Handler struct {
-}
+type TestEvent1Handler struct{}
 
 func (e *TestEvent1) Type() reflect.Type {
 	return reflect.TypeOf(e)
@@ -44,8 +43,7 @@ type TestEvent2 struct {
 	handler3 bool
 }
 
-type TestEvent2Handler struct {
-}
+type TestEvent2Handler struct{}
 
 func (e *TestEvent2) Type() reflect.Type {
 	return reflect.TypeOf(e)
@@ -58,8 +56,7 @@ func (h *TestEvent2Handler) Handle(event INotification) error {
 	return nil
 }
 
-type TestEvent2Handler2 struct {
-}
+type TestEvent2Handler2 struct{}
 
 func (h *TestEvent2Handler2) Handle(event INotification) error {
 	e := event.(*TestEvent2)
@@ -68,14 +65,25 @@ func (h *TestEvent2Handler2) Handle(event INotification) error {
 	return nil
 }
 
-type TestEvent2Handler3 struct {
-}
+type TestEvent2Handler3 struct{}
 
 func (h *TestEvent2Handler3) Handle(event INotification) error {
 	e := event.(*TestEvent2)
 	e.msg += "[TestEvent2Handler3]"
 	e.handler3 = true
 	return nil
+}
+
+type TestEvent2HandlerWithError1 struct{}
+
+func (h *TestEvent2HandlerWithError1) Handle(event INotification) error {
+	return errors.New("TestEvent2HandlerWithError1")
+}
+
+type TestEvent2HandlerWithError2 struct{}
+
+func (h *TestEvent2HandlerWithError2) Handle(event INotification) error {
+	return errors.New("TestEvent2HandlerWithError2")
 }
 
 func TestEvent(t *testing.T) {
@@ -179,6 +187,28 @@ func TestEvent(t *testing.T) {
 		}
 		if event.handler1 != true || event.handler2 != true || event.handler3 != true {
 			t.Error("some handler are missing")
+		}
+	})
+
+	t.Run("mutil handler error test", func(t *testing.T) {
+		mediator := New(new(TestRoutinePool)).
+			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2HandlerWithError1)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2HandlerWithError2)).
+			Build()
+
+		msg := "mutil errors testing"
+		event := &TestEvent2{msg: msg}
+		err := mediator.Publish(context.Background(), event)
+		if err == nil {
+			t.Errorf("expect a error but not got")
+		}
+		expectErrMsg := "TestEvent2HandlerWithError1; TestEvent2HandlerWithError2"
+		if err.Error() != expectErrMsg {
+			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, err)
 		}
 	})
 }
