@@ -2,7 +2,6 @@ package mediator
 
 import (
 	"context"
-	"fmt"
 	"reflect"
 	"sync"
 
@@ -58,7 +57,7 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 
 	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
-		return errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String()))
+		return errors.Errorf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String())
 	}
 
 	var (
@@ -84,7 +83,10 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 
 	select {
 	case <-waitAllDone(doneSilce):
-		return errNoti.ToSingleError()
+		if errNoti.HasError() {
+			return errNoti
+		}
+		return nil
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -98,7 +100,7 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
-		return nil, errors.New(fmt.Sprintf("Publish: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
+		return nil, errors.Errorf("Send: %s -> %v", ErrorNotCommandHandler, command.Type().String())
 	}
 
 	done := make(chan struct{})
@@ -196,11 +198,6 @@ func (e *ErrorNotification) HasError() bool {
 // Errors ...
 func (e *ErrorNotification) Errors() []error {
 	return e.errors
-}
-
-// ToSingleError ...
-func (e *ErrorNotification) ToSingleError() error {
-	return multierr.Combine(e.errors...)
 }
 
 func (e *ErrorNotification) Error() string {
