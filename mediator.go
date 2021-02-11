@@ -2,9 +2,13 @@ package mediator
 
 import (
 	"context"
+	"log"
+	"math"
 	"reflect"
 	"sync"
+	"time"
 
+	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
@@ -26,6 +30,12 @@ const (
 
 	// ErrorInvalidArgument ...
 	ErrorInvalidArgument = "invalid argument"
+
+	// DefualtPoolCap ...
+	DefualtPoolCap = 1000
+
+	// MaxPoolCap ...
+	MaxPoolCap = 10000
 )
 
 // Mediator ...
@@ -37,7 +47,13 @@ type Mediator struct {
 }
 
 // New ...
-func New(pool IRoutinePool) IMediatorBuilder {
+func New() IMediatorBuilder {
+	defaultPool := NewRoutinePool(new(DefaultLogger))
+	return NewWithPool(defaultPool)
+}
+
+// NewWithPool ...
+func NewWithPool(pool IRoutinePool) IMediatorBuilder {
 	if pool == nil {
 		panic("invalid argument pool")
 	}
@@ -202,4 +218,58 @@ func (e *ErrorNotification) Errors() []error {
 
 func (e *ErrorNotification) Error() string {
 	return multierr.Combine(e.errors...).Error()
+}
+
+// DefualtRoutinePool ...
+type DefualtRoutinePool struct {
+	pool *ants.Pool
+}
+
+// NewRoutinePool ...
+func NewRoutinePool(logger ILogger) *DefualtRoutinePool {
+	pool, err := ants.NewPool(1000,
+		ants.WithPanicHandler(func(i interface{}) {
+			logger.Errorf("mediator: got a panic when running handler: %v", i)
+		}),
+		ants.WithPreAlloc(false),
+	)
+	if err != nil {
+		panic("can not initialize the pool: " + err.Error())
+	}
+	return &DefualtRoutinePool{
+		pool: pool,
+	}
+}
+
+// Publish ...
+func (p *DefualtRoutinePool) Publish(t ITask) error {
+	var err error
+	for i := 1; i <= 5; i++ {
+		err = p.pool.Submit(t)
+		if err == nil {
+			return nil
+		} else if err == ants.ErrPoolOverload && p.pool.Cap() < MaxPoolCap {
+			newCap := int(math.Min(float64(p.pool.Cap()*2), float64(MaxPoolCap)))
+			p.pool.Tune(newCap)
+		} else if err == ants.ErrPoolOverload {
+			// gradient descent
+			time.Sleep(time.Millisecond * time.Duration(i*i))
+		} else {
+			return err
+		}
+	}
+	return err
+}
+
+// DefaultLogger ...
+type DefaultLogger struct{}
+
+// Printf ...
+func (l *DefaultLogger) Printf(format string, messages ...interface{}) {
+	log.Printf(format, messages...)
+}
+
+// Errorf ...
+func (l *DefaultLogger) Errorf(format string, messages ...interface{}) {
+	log.Fatalf(format, messages...)
 }

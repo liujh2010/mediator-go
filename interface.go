@@ -45,3 +45,9 @@ type ITask func()
 type IRoutinePool interface {
 	Publish(t ITask) error
 }
+
+// ILogger ...
+type ILogger interface {
+	Printf(format string, messages ...interface{})
+	Errorf(format string, messages ...interface{})
+}
