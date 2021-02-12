@@ -88,7 +88,7 @@ func (h *TestEvent2HandlerWithError2) Handle(event INotification) error {
 
 func TestEvent(t *testing.T) {
 	t.Run("event testing", func(t *testing.T) {
-		builder := NewWithPool(new(TestRoutinePool))
+		builder := New(SetRoutinePool(new(TestRoutinePool)))
 		builder.RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler))
 		mediator := builder.Build()
 
@@ -105,7 +105,7 @@ func TestEvent(t *testing.T) {
 	})
 
 	t.Run("mutil evet testing", func(t *testing.T) {
-		builder := NewWithPool(new(TestRoutinePool))
+		builder := New(SetRoutinePool(new(TestRoutinePool)))
 		builder.RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler))
 		builder.RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler))
 		mediator := builder.Build()
@@ -133,7 +133,7 @@ func TestEvent(t *testing.T) {
 	})
 
 	t.Run("concurrent event testing", func(t *testing.T) {
-		builder := NewWithPool(new(TestRoutinePool))
+		builder := New(SetRoutinePool(new(TestRoutinePool)))
 		builder.RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler))
 		builder.RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler))
 		mediator := builder.Build()
@@ -172,7 +172,7 @@ func TestEvent(t *testing.T) {
 	})
 
 	t.Run("mutil handler test", func(t *testing.T) {
-		builder := NewWithPool(new(TestRoutinePool))
+		builder := New(SetRoutinePool(new(TestRoutinePool)))
 		builder.RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler))
 		builder.RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler))
 		builder.RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2))
@@ -191,7 +191,7 @@ func TestEvent(t *testing.T) {
 	})
 
 	t.Run("mutil handler error test", func(t *testing.T) {
-		mediator := NewWithPool(new(TestRoutinePool)).
+		mediator := New(SetRoutinePool(new(TestRoutinePool))).
 			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
@@ -227,7 +227,7 @@ func (e *BlockEventHandler) Handle(event INotification) error {
 }
 
 func TestContext(t *testing.T) {
-	builder := NewWithPool(new(TestRoutinePool))
+	builder := New(SetRoutinePool(new(TestRoutinePool)))
 	mediator := builder.
 		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
@@ -279,7 +279,7 @@ func (e *TestCommand1Handler) Handle(command IRequest) (interface{}, error) {
 
 func TestCommand(t *testing.T) {
 	t.Run("command test", func(t *testing.T) {
-		mediator := NewWithPool(new(TestRoutinePool)).
+		mediator := New(SetRoutinePool(new(TestRoutinePool))).
 			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
@@ -303,7 +303,7 @@ func TestCommand(t *testing.T) {
 	})
 
 	t.Run("command error test", func(t *testing.T) {
-		mediator := NewWithPool(new(TestRoutinePool)).
+		mediator := New(SetRoutinePool(new(TestRoutinePool))).
 			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
@@ -328,7 +328,7 @@ func TestCommand(t *testing.T) {
 	})
 
 	t.Run("mulit command test", func(t *testing.T) {
-		mediator := NewWithPool(new(TestRoutinePool)).
+		mediator := New(SetRoutinePool(new(TestRoutinePool))).
 			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
@@ -390,7 +390,7 @@ func TestCommand(t *testing.T) {
 	})
 
 	t.Run("command timeout test", func(t *testing.T) {
-		mediator := NewWithPool(new(TestRoutinePool)).
+		mediator := New(SetRoutinePool(new(TestRoutinePool))).
 			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
@@ -430,7 +430,7 @@ func (e *NotHandlerCommand) Type() reflect.Type {
 }
 
 func TestMediator(t *testing.T) {
-	mediator := NewWithPool(new(TestRoutinePool)).
+	mediator := New(SetRoutinePool(new(TestRoutinePool))).
 		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
 		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
 		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
