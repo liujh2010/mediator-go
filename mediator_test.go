@@ -10,6 +10,7 @@ import (
 	"time"
 
 	. "github.com/liujh2010/mediator"
+	"github.com/panjf2000/ants/v2"
 )
 
 type TestRoutinePool struct {
@@ -132,7 +133,7 @@ func TestEvent(t *testing.T) {
 		}
 	})
 
-	t.Run("concurrent event testing", func(t *testing.T) {
+	t.Run("concurrency event testing", func(t *testing.T) {
 		builder := New(SetRoutinePool(new(TestRoutinePool)))
 		builder.RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler))
 		builder.RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler))
@@ -505,6 +506,181 @@ func TestMediator(t *testing.T) {
 
 		if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
 			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+		}
+	})
+}
+
+type PanicEvent struct {
+	msg string
+}
+
+func (e *PanicEvent) Type() reflect.Type {
+	return reflect.TypeOf(new(PanicEvent))
+}
+
+type PanicEventHandler struct{}
+
+func (h *PanicEventHandler) Handle(event INotification) error {
+	panic(event.(*PanicEvent).msg)
+}
+
+func TestDefaultRoutinePool(t *testing.T) {
+	mediator := New(
+		SetRoutinePool(
+			NewRoutinePool(
+				new(DefaultLogger),
+				SetInitialPoolSize(50),
+				SetMaxPoolSize(200),
+				SetSubmitRetryCount(5),
+				SetIsBlockingPool(true),
+			),
+		),
+	).
+		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+		RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+		RegisterEventHandler(new(PanicEvent).Type(), new(PanicEventHandler)).
+		RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+		RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+		Build()
+
+	t.Run("event test", func(t *testing.T) {
+		msg := "just testing"
+		event := &TestEvent2{msg: msg}
+		err := mediator.Publish(context.Background(), event)
+		if err != nil {
+			t.Errorf("got error: %+v", err)
+		}
+		if event.handler1 != true || event.handler2 != true || event.handler3 != true {
+			t.Error("some handler are missing")
+		}
+	})
+
+	t.Run("concurrency test", func(t *testing.T) {
+		wg := &sync.WaitGroup{}
+		wg.Add(200)
+
+		for i := 0; i < 200; i++ {
+			go func() {
+				for i := 0; i < 100; i++ {
+					msg := "Testing"
+
+					event1 := &TestEvent1{msg: msg}
+					err := mediator.Publish(context.Background(), event1)
+					if err != nil {
+						t.Errorf("got error: %+v", err)
+					}
+					res, err := mediator.Send(context.Background(), &TestCommandCommon{
+						msg: msg,
+						err: nil,
+					})
+					if err != nil {
+						t.Errorf("got a error when testing command: %v", err)
+					}
+
+					res1 := msg + " 1 visited"
+					if event1.msg != res1 {
+						t.Error("result not match")
+					}
+					if res.(string) != (msg + " 1 visited") {
+						t.Errorf("result doesn't match")
+					}
+				}
+				wg.Done()
+			}()
+		}
+
+		wg.Wait()
+	})
+
+	t.Run("adjust capacity test", func(t *testing.T) {
+		mediator := New(
+			SetRoutinePool(
+				NewRoutinePool(
+					new(DefaultLogger),
+					SetInitialPoolSize(10),
+					SetMaxPoolSize(20),
+					SetSubmitRetryCount(2),
+				),
+			),
+		).
+			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+			RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+			RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+			Build()
+
+		for i := 0; i < 20; i++ {
+			go func() {
+				mediator.Send(context.TODO(), &TestCommandCommon{
+					msg:      "adjust test",
+					duration: time.Millisecond * 500,
+				})
+			}()
+		}
+
+		time.Sleep(time.Millisecond * 100)
+		_, err := mediator.Send(context.TODO(), &TestCommandCommon{
+			msg: "adjust test",
+		})
+		if err != ants.ErrPoolOverload {
+			t.Errorf("want got error %v, but got %v", ants.ErrPoolOverload, err)
+		}
+	})
+
+	t.Run("pool gradient descent test", func(t *testing.T) {
+		mediator := New(
+			SetRoutinePool(
+				NewRoutinePool(
+					new(DefaultLogger),
+					SetInitialPoolSize(20),
+					SetMaxPoolSize(20),
+					SetSubmitRetryCount(6),
+				),
+			),
+		).
+			RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+			RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+			RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+			RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+			RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+			Build()
+
+		wg := &sync.WaitGroup{}
+		wg.Add(20)
+		for i := 0; i < 20; i++ {
+			go func() {
+				wg.Done()
+				mediator.Send(context.TODO(), &TestCommandCommon{
+					msg:      "adjust test",
+					duration: time.Millisecond * 50,
+				})
+			}()
+		}
+
+		wg.Wait()
+		time.Sleep(time.Millisecond * 10)
+		_, err := mediator.Send(context.TODO(), &TestCommandCommon{
+			msg: "adjust test",
+		})
+		if err != nil {
+			t.Errorf("got error %+v", err)
+		}
+	})
+
+	t.Run("panic test", func(t *testing.T) {
+		panicEvent := &PanicEvent{msg: "just panic"}
+		err := mediator.Publish(context.TODO(), panicEvent)
+		expectErrMsg := "got panic when running *mediator_test.PanicEvent event, cause: " + panicEvent.msg
+		if err.Error() != expectErrMsg {
+			t.Errorf("error not match, expect: %v, actual : %v", expectErrMsg, err.Error())
 		}
 	})
 }
