@@ -2,9 +2,14 @@ package mediator
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"math"
 	"reflect"
 	"sync"
+	"time"
 
+	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
 	"go.uber.org/multierr"
 )
@@ -30,22 +35,66 @@ const (
 
 // Mediator ...
 type Mediator struct {
+	mediatorConfig
 	mut               *sync.Mutex
 	eventHandlerMap   map[reflect.Type][]INotificationHandler
 	commandHandlerMap map[reflect.Type]IRequestHandler
-	pool              IRoutinePool
+}
+
+type mediatorConfig struct {
+	logger ILogger
+	pool   IRoutinePool
+}
+
+// Option ...
+type Option interface {
+	applyOption(config *mediatorConfig)
+}
+
+// OptionFunc ...
+type OptionFunc func(config *mediatorConfig)
+
+func (f OptionFunc) applyOption(config *mediatorConfig) { f(config) }
+
+// SetLogger ...
+func SetLogger(logger ILogger) Option {
+	return OptionFunc(func(config *mediatorConfig) {
+		config.logger = logger
+	})
+}
+
+// SetRoutinePool ...
+func SetRoutinePool(pool IRoutinePool) Option {
+	return OptionFunc(func(config *mediatorConfig) {
+		config.pool = pool
+	})
+}
+
+// Options ...
+func Options(options ...Option) Option {
+	return OptionFunc(func(config *mediatorConfig) {
+		for _, option := range options {
+			option.applyOption(config)
+		}
+	})
 }
 
 // New ...
-func New(pool IRoutinePool) IMediatorBuilder {
-	if pool == nil {
-		panic("invalid argument pool")
+func New(options ...Option) IMediatorBuilder {
+	config := &mediatorConfig{
+		logger: new(DefaultLogger),
 	}
+
+	Options(options...).applyOption(config)
+	if config.pool == nil {
+		config.pool = NewRoutinePool(config.logger)
+	}
+
 	return &Mediator{
 		mut:               &sync.Mutex{},
 		eventHandlerMap:   make(map[reflect.Type][]INotificationHandler),
 		commandHandlerMap: make(map[reflect.Type]IRequestHandler),
-		pool:              pool,
+		mediatorConfig:    *config,
 	}
 }
 
@@ -70,15 +119,27 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 		done := make(chan struct{})
 		doneSilce = append(doneSilce, done)
 
-		func(h INotificationHandler) {
+		if poolErr := func(h INotificationHandler) error {
 
-			m.pool.Publish(func() {
+			return m.pool.Publish(func() {
+				defer func() {
+					if internalErr := recover(); internalErr != nil {
+						msg := fmt.Sprintf("got panic when running %v event, cause: %v", event.Type().String(), internalErr)
+						m.logger.Errorf(msg)
+						errNoti.add(errors.New(msg))
+						close(done)
+					}
+				}()
+
 				err := h.Handle(event)
 				errNoti.add(err)
 				close(done)
 			})
 
-		}(handler)
+		}(handler); poolErr != nil {
+			return poolErr
+		}
+
 	}
 
 	select {
@@ -109,10 +170,21 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 		err  error
 	)
 
-	m.pool.Publish(func() {
+	if poolErr := m.pool.Publish(func() {
+		defer func() {
+			if internalErr := recover(); internalErr != nil {
+				msg := fmt.Sprintf("got panic when running %v command, cause: %v", command.Type().String(), internalErr)
+				m.logger.Errorf(msg)
+				err = errors.New(msg)
+				close(done)
+			}
+		}()
+
 		data, err = handler.Handle(command)
 		close(done)
-	})
+	}); poolErr != nil {
+		return nil, poolErr
+	}
 
 	select {
 	case <-done:
@@ -202,4 +274,153 @@ func (e *ErrorNotification) Errors() []error {
 
 func (e *ErrorNotification) Error() string {
 	return multierr.Combine(e.errors...).Error()
+}
+
+const (
+	// DefaultPoolCap ...
+	DefaultPoolCap = 1000
+
+	// DefaultMaxPoolCap ...
+	DefaultMaxPoolCap = 10000
+
+	// DefualtPoolSubmitRetryCount ...
+	DefualtPoolSubmitRetryCount = 5
+
+	// DefaultIsBlockingPool ...
+	DefaultIsBlockingPool = false
+)
+
+// DefaultRoutinePool ...
+type DefaultRoutinePool struct {
+	poolConfig
+	logger ILogger
+	pool   *ants.Pool
+}
+
+type poolConfig struct {
+	initialPoolSize  int
+	maxPoolSize      int
+	submitRetryCount int
+	isBlockingPool   bool
+	logger           ILogger
+}
+
+// DefaultRoutinePoolOption ...
+type DefaultRoutinePoolOption interface {
+	applyOption(config *poolConfig)
+}
+
+// DefaultRoutinePoolOptionFunc ...
+type DefaultRoutinePoolOptionFunc func(config *poolConfig)
+
+func (f DefaultRoutinePoolOptionFunc) applyOption(config *poolConfig) { f(config) }
+
+// SetInitialPoolSize ...
+func SetInitialPoolSize(size int) DefaultRoutinePoolOption {
+	return DefaultRoutinePoolOptionFunc(func(config *poolConfig) {
+		config.initialPoolSize = size
+	})
+}
+
+// SetMaxPoolSize ...
+func SetMaxPoolSize(size int) DefaultRoutinePoolOption {
+	return DefaultRoutinePoolOptionFunc(func(config *poolConfig) {
+		config.maxPoolSize = size
+	})
+}
+
+// SetSubmitRetryCount ...
+func SetSubmitRetryCount(count int) DefaultRoutinePoolOption {
+	return DefaultRoutinePoolOptionFunc(func(config *poolConfig) {
+		config.submitRetryCount = count
+	})
+}
+
+// SetIsBlockingPool ...
+func SetIsBlockingPool(blocking bool) DefaultRoutinePoolOption {
+	return DefaultRoutinePoolOptionFunc(func(config *poolConfig) {
+		config.isBlockingPool = blocking
+	})
+}
+
+// PoolOptions ...
+func PoolOptions(options ...DefaultRoutinePoolOption) DefaultRoutinePoolOption {
+	return DefaultRoutinePoolOptionFunc(func(config *poolConfig) {
+		for _, v := range options {
+			v.applyOption(config)
+		}
+	})
+}
+
+// NewRoutinePool ...
+func NewRoutinePool(logger ILogger, options ...DefaultRoutinePoolOption) *DefaultRoutinePool {
+	config := &poolConfig{
+		initialPoolSize:  DefaultPoolCap,
+		maxPoolSize:      DefaultMaxPoolCap,
+		submitRetryCount: DefualtPoolSubmitRetryCount,
+		isBlockingPool:   DefaultIsBlockingPool,
+	}
+	PoolOptions(options...).applyOption(config)
+
+	pool, err := ants.NewPool(
+		config.initialPoolSize,
+		ants.WithPanicHandler(func(i interface{}) {
+			logger.Errorf("mediator: got a panic when running handler: %v", i)
+		}),
+		ants.WithPreAlloc(false),
+		ants.WithNonblocking(!config.isBlockingPool),
+	)
+	if err != nil {
+		panic("can not initialize the pool: " + err.Error())
+	}
+
+	return &DefaultRoutinePool{
+		pool:       pool,
+		logger:     logger,
+		poolConfig: *config,
+	}
+}
+
+// Publish ...
+func (p *DefaultRoutinePool) Publish(t ITask) error {
+	var err error
+	for i := 1; i <= p.submitRetryCount; i++ {
+		err = p.pool.Submit(t)
+		if err == nil {
+			return nil
+		} else if err == ants.ErrPoolOverload && p.pool.Cap() < p.maxPoolSize {
+
+			newCap := int(math.Min(float64(p.pool.Cap()*2), float64(DefaultMaxPoolCap)))
+			p.pool.Tune(newCap)
+			p.logger.Printf("routine pool overload, expansion to pool cap: %d", newCap)
+
+		} else if err == ants.ErrPoolOverload {
+
+			p.logger.Printf("routine pool overload, and the capacity has reached the set maximum. Retry after sleep %dms, retry for the %dth time", time.Duration(i*i), i-1)
+			// gradient descent
+			time.Sleep(time.Millisecond * time.Duration(math.Pow(2.0, float64(i))))
+
+		} else {
+			p.logger.Errorf("routine pool error: %v", err)
+			return err
+		}
+	}
+
+	if err != nil {
+		p.logger.Errorf("routine pool error: %v", err)
+	}
+	return err
+}
+
+// DefaultLogger ...
+type DefaultLogger struct{}
+
+// Printf ...
+func (l *DefaultLogger) Printf(format string, messages ...interface{}) {
+	log.Printf(format, messages...)
+}
+
+// Errorf ...
+func (l *DefaultLogger) Errorf(format string, messages ...interface{}) {
+	log.Printf(format, messages...)
 }
