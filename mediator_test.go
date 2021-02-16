@@ -31,7 +31,7 @@ func (e *TestEvent1) Type() reflect.Type {
 	return reflect.TypeOf(e)
 }
 
-func (h *TestEvent1Handler) Handle(event INotification) error {
+func (h *TestEvent1Handler) Handle(ctx context.Context, event INotification) error {
 	e := event.(*TestEvent1)
 	e.msg += " 1 visited"
 	return nil
@@ -50,7 +50,7 @@ func (e *TestEvent2) Type() reflect.Type {
 	return reflect.TypeOf(e)
 }
 
-func (h *TestEvent2Handler) Handle(event INotification) error {
+func (h *TestEvent2Handler) Handle(ctx context.Context, event INotification) error {
 	e := event.(*TestEvent2)
 	e.msg += " 2 visited"
 	e.handler1 = true
@@ -59,7 +59,7 @@ func (h *TestEvent2Handler) Handle(event INotification) error {
 
 type TestEvent2Handler2 struct{}
 
-func (h *TestEvent2Handler2) Handle(event INotification) error {
+func (h *TestEvent2Handler2) Handle(ctx context.Context, event INotification) error {
 	e := event.(*TestEvent2)
 	e.msg += "[TestEvent2Handler2]"
 	e.handler2 = true
@@ -68,7 +68,7 @@ func (h *TestEvent2Handler2) Handle(event INotification) error {
 
 type TestEvent2Handler3 struct{}
 
-func (h *TestEvent2Handler3) Handle(event INotification) error {
+func (h *TestEvent2Handler3) Handle(ctx context.Context, event INotification) error {
 	e := event.(*TestEvent2)
 	e.msg += "[TestEvent2Handler3]"
 	e.handler3 = true
@@ -77,13 +77,13 @@ func (h *TestEvent2Handler3) Handle(event INotification) error {
 
 type TestEvent2HandlerWithError1 struct{}
 
-func (h *TestEvent2HandlerWithError1) Handle(event INotification) error {
+func (h *TestEvent2HandlerWithError1) Handle(ctx context.Context, event INotification) error {
 	return errors.New("TestEvent2HandlerWithError1")
 }
 
 type TestEvent2HandlerWithError2 struct{}
 
-func (h *TestEvent2HandlerWithError2) Handle(event INotification) error {
+func (h *TestEvent2HandlerWithError2) Handle(ctx context.Context, event INotification) error {
 	return errors.New("TestEvent2HandlerWithError2")
 }
 
@@ -222,7 +222,7 @@ func (e *BlockEvent) Type() reflect.Type {
 
 type BlockEventHandler struct{}
 
-func (e *BlockEventHandler) Handle(event INotification) error {
+func (e *BlockEventHandler) Handle(ctx context.Context, event INotification) error {
 	time.Sleep(time.Second * 10000)
 	return nil
 }
@@ -254,7 +254,7 @@ func (e *TestCommandCommon) Type() reflect.Type {
 
 type TestCommandCommonHandler struct{}
 
-func (e *TestCommandCommonHandler) Handle(command IRequest) (interface{}, error) {
+func (e *TestCommandCommonHandler) Handle(ctx context.Context, command IRequest) (interface{}, error) {
 	c := command.(*TestCommandCommon)
 	time.Sleep(c.duration)
 	if c.err != nil {
@@ -273,7 +273,7 @@ func (e *TestCommand1) Type() reflect.Type {
 
 type TestCommand1Handler struct{}
 
-func (e *TestCommand1Handler) Handle(command IRequest) (interface{}, error) {
+func (e *TestCommand1Handler) Handle(ctx context.Context, command IRequest) (interface{}, error) {
 	c := command.(*TestCommand1)
 	return c.msg + " 2 visited", nil
 }
@@ -520,7 +520,7 @@ func (e *PanicEvent) Type() reflect.Type {
 
 type PanicEventHandler struct{}
 
-func (h *PanicEventHandler) Handle(event INotification) error {
+func (h *PanicEventHandler) Handle(ctx context.Context, event INotification) error {
 	panic(event.(*PanicEvent).msg)
 }
 

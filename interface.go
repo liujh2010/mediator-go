@@ -12,7 +12,7 @@ type INotification interface {
 
 // INotificationHandler ...
 type INotificationHandler interface {
-	Handle(event INotification) error
+	Handle(ctx context.Context, event INotification) error
 }
 
 // IRequest ...
@@ -22,7 +22,7 @@ type IRequest interface {
 
 // IRequestHandler ...
 type IRequestHandler interface {
-	Handle(command IRequest) (interface{}, error)
+	Handle(ctx context.Context, command IRequest) (interface{}, error)
 }
 
 // IMediator ...
