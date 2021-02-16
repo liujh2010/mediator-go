@@ -131,7 +131,7 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 					}
 				}()
 
-				err := h.Handle(event)
+				err := h.Handle(ctx, event)
 				errNoti.add(err)
 				close(done)
 			})
@@ -180,7 +180,7 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 			}
 		}()
 
-		data, err = handler.Handle(command)
+		data, err = handler.Handle(ctx, command)
 		close(done)
 	}); poolErr != nil {
 		return nil, poolErr
