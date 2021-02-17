@@ -139,7 +139,7 @@ func TestExample(t *testing.T) {
 	// Publish the "CreatedOrderEvent" when create order command is finished.
 	// The publish action will be trigger two event handlers that register by the above code,
 	// these two handlers will be concurrent processing the event, the process will not be interrupted,
-	// even if one of them has an error.
+	// even if one of them has an error. However the cancellation via context is still supported.
 	eventErr := mediator.Publish(ctx, event)
 
 	// check the error
