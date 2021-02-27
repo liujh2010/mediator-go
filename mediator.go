@@ -99,14 +99,17 @@ func New(options ...Option) IMediatorBuilder {
 }
 
 // Publish ...
-func (m *Mediator) Publish(ctx context.Context, event INotification) error {
+func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
+	result := &Result{}
 	if ctx == nil || event == nil {
-		return errors.New((ErrorInvalidArgument + " ctx or event"))
+		return result.setErr(errors.New((ErrorInvalidArgument + " ctx or event")))
 	}
 
 	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
-		return errors.Errorf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String())
+		return result.setErr(
+			errors.Errorf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String()),
+		)
 	}
 
 	var (
@@ -137,7 +140,7 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 			})
 
 		}(handler); poolErr != nil {
-			return poolErr
+			return result.setErr(poolErr)
 		}
 
 	}
@@ -145,23 +148,24 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) error {
 	select {
 	case <-waitAllDone(doneSilce):
 		if errNoti.HasError() {
-			return errNoti
+			return result.setErr(errNoti)
 		}
-		return nil
+		return result
 	case <-ctx.Done():
-		return ctx.Err()
+		return result.setErr(ctx.Err())
 	}
 }
 
 // Send ...
-func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, error) {
+func (m *Mediator) Send(ctx context.Context, command IRequest) IResult {
+	result := &Result{}
 	if ctx == nil || command == nil {
-		return nil, errors.New(ErrorInvalidArgument + " ctx or command")
+		return result.setErr(errors.New(ErrorInvalidArgument + " ctx or command"))
 	}
 
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
-		return nil, errors.Errorf("Send: %s -> %v", ErrorNotCommandHandler, command.Type().String())
+		return result.setErr(errors.Errorf("Send: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
 	}
 
 	done := make(chan struct{})
@@ -183,14 +187,16 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) (interface{}, err
 		data, err = handler.Handle(ctx, command)
 		close(done)
 	}); poolErr != nil {
-		return nil, poolErr
+		return result.setErr(poolErr)
 	}
 
 	select {
 	case <-done:
-		return data, err
+		return result.
+			setVal(data).
+			setErr(err)
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return result.setErr(ctx.Err())
 	}
 }
 
@@ -423,4 +429,45 @@ func (l *DefaultLogger) Printf(format string, messages ...interface{}) {
 // Errorf ...
 func (l *DefaultLogger) Errorf(format string, messages ...interface{}) {
 	log.Printf(format, messages...)
+}
+
+// Result ...
+type Result struct {
+	err   error
+	value interface{}
+}
+
+// Err ...
+func (r Result) Err() error {
+	return r.err
+}
+
+// Value ...
+func (r Result) Value() interface{} {
+	return r.value
+}
+
+// ValueT ...
+func (r Result) ValueT(ptr interface{}) {
+	reflect.ValueOf(ptr).Set(reflect.ValueOf(r.value))
+}
+
+// HasError ...
+func (r Result) HasError() bool {
+	return r.err != nil
+}
+
+// HasValue ...
+func (r Result) HasValue() bool {
+	return r.value != nil
+}
+
+func (r *Result) setErr(err error) *Result {
+	r.err = err
+	return r
+}
+
+func (r *Result) setVal(val interface{}) *Result {
+	r.value = val
+	return r
 }

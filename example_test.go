@@ -117,14 +117,14 @@ func TestExample(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Second*20)
 
 	// In this case, the mediator will find out the handler of "CreateOrderCommand" to handle the command.
-	orderID, err := mediator.Send(ctx, createOrderCommand) // trigger the command
+	result := mediator.Send(ctx, createOrderCommand) // trigger the command
 
 	// check the error and result
-	if err != nil {
-		t.Errorf("got an unexpected error: %v", err)
+	if result.Err() != nil {
+		t.Errorf("got an unexpected error: %v", result.Err())
 	}
-	if orderID.(string) != createOrderCommand.orderID {
-		t.Errorf("wrong order_id, want: %v, got: %v", createOrderCommand.orderID, orderID)
+	if result.Value().(string) != createOrderCommand.orderID {
+		t.Errorf("wrong order_id, want: %v, got: %v", createOrderCommand.orderID, result.Value())
 	}
 
 	// build the created order event
@@ -140,11 +140,11 @@ func TestExample(t *testing.T) {
 	// The publish action will be trigger two event handlers that register by the above code,
 	// these two handlers will be concurrent processing the event, the process will not be interrupted,
 	// even if one of them has an error. However the cancellation via context is still supported.
-	eventErr := mediator.Publish(ctx, event)
+	result = mediator.Publish(ctx, event)
 
 	// check the error
-	if eventErr != nil {
-		t.Errorf("got an unexpected error: %v", eventErr)
+	if result.Err() != nil {
+		t.Errorf("got an unexpected error: %v", result.Err())
 	}
 }
 
