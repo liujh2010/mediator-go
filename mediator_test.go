@@ -95,9 +95,9 @@ func TestEvent(t *testing.T) {
 
 		msg := "Testing"
 		event := &TestEvent1{msg: msg}
-		err := mediator.Publish(context.Background(), event)
-		if err != nil {
-			t.Errorf("got error: %+v", err)
+		result := mediator.Publish(context.Background(), event)
+		if result.Err() != nil {
+			t.Errorf("got error: %+v", result.Err())
 		}
 		msg += " 1 visited"
 		if event.msg != msg {
@@ -114,13 +114,13 @@ func TestEvent(t *testing.T) {
 		msg := "Testing"
 		event1 := &TestEvent1{msg: msg}
 		event2 := &TestEvent2{msg: msg}
-		err := mediator.Publish(context.Background(), event1)
-		if err != nil {
-			t.Errorf("got error: %+v", err)
+		result := mediator.Publish(context.Background(), event1)
+		if result.Err() != nil {
+			t.Errorf("got error: %+v", result.Err())
 		}
-		err = mediator.Publish(context.Background(), event2)
-		if err != nil {
-			t.Errorf("got error: %+v", err)
+		result = mediator.Publish(context.Background(), event2)
+		if result.Err() != nil {
+			t.Errorf("got error: %+v", result.Err())
 		}
 
 		res1 := msg + " 1 visited"
@@ -147,13 +147,13 @@ func TestEvent(t *testing.T) {
 					msg := "Testing"
 					event1 := &TestEvent1{msg: msg}
 					event2 := &TestEvent2{msg: msg}
-					err := mediator.Publish(context.Background(), event1)
-					if err != nil {
-						t.Errorf("got error: %+v", err)
+					result := mediator.Publish(context.Background(), event1)
+					if result.Err() != nil {
+						t.Errorf("got error: %+v", result.Err())
 					}
-					err = mediator.Publish(context.Background(), event2)
-					if err != nil {
-						t.Errorf("got error: %+v", err)
+					result = mediator.Publish(context.Background(), event2)
+					if result.Err() != nil {
+						t.Errorf("got error: %+v", result.Err())
 					}
 
 					res1 := msg + " 1 visited"
@@ -182,9 +182,9 @@ func TestEvent(t *testing.T) {
 
 		msg := "just testing"
 		event := &TestEvent2{msg: msg}
-		err := mediator.Publish(context.Background(), event)
-		if err != nil {
-			t.Errorf("got error: %+v", err)
+		result := mediator.Publish(context.Background(), event)
+		if result.Err() != nil {
+			t.Errorf("got error: %+v", result.Err())
 		}
 		if event.handler1 != true || event.handler2 != true || event.handler3 != true {
 			t.Error("some handler are missing")
@@ -203,13 +203,13 @@ func TestEvent(t *testing.T) {
 
 		msg := "mutil errors testing"
 		event := &TestEvent2{msg: msg}
-		err := mediator.Publish(context.Background(), event)
-		if err == nil {
+		result := mediator.Publish(context.Background(), event)
+		if result.Err() == nil {
 			t.Errorf("expect a error but not got")
 		}
 		expectErrMsg := "TestEvent2HandlerWithError1; TestEvent2HandlerWithError2"
-		if err.Error() != expectErrMsg {
-			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, err)
+		if result.Err().Error() != expectErrMsg {
+			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, result)
 		}
 	})
 }
@@ -236,9 +236,9 @@ func TestContext(t *testing.T) {
 		Build()
 
 	ctx, _ := context.WithTimeout(context.Background(), time.Second)
-	err := mediator.Publish(ctx, new(BlockEvent))
-	if err != context.DeadlineExceeded {
-		t.Errorf("got wrong error， except: %v, actual: %v", context.DeadlineExceeded, err)
+	result := mediator.Publish(ctx, new(BlockEvent))
+	if result.Err() != context.DeadlineExceeded {
+		t.Errorf("got wrong error， except: %v, actual: %v", context.DeadlineExceeded, result.Err())
 	}
 }
 
@@ -288,17 +288,17 @@ func TestCommand(t *testing.T) {
 			Build()
 
 		testMsg := "testing"
-		res, err := mediator.Send(context.Background(), &TestCommandCommon{
+		result := mediator.Send(context.Background(), &TestCommandCommon{
 			msg:      testMsg,
 			duration: time.Microsecond,
 			err:      nil,
 		})
 
-		if err != nil {
-			t.Errorf("got a error when testing command: %v", err)
+		if result.Err() != nil {
+			t.Errorf("got a error when testing command: %v", result.Err())
 		}
 
-		if res.(string) != (testMsg + " 1 visited") {
+		if result.Value().(string) != (testMsg + " 1 visited") {
 			t.Errorf("result doesn't match")
 		}
 	})
@@ -313,18 +313,18 @@ func TestCommand(t *testing.T) {
 
 		testMsg := "testing"
 		testErr := errors.New("this is test error")
-		res, err := mediator.Send(context.Background(), &TestCommandCommon{
+		result := mediator.Send(context.Background(), &TestCommandCommon{
 			msg:      testMsg,
 			duration: time.Microsecond,
 			err:      testErr,
 		})
 
-		if res != nil {
-			t.Errorf("result should be nil")
+		if result.Value() != nil {
+			t.Errorf("value should be nil")
 		}
 
-		if err != testErr {
-			t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, err)
+		if result.Err() != testErr {
+			t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, result.Err())
 		}
 	})
 
@@ -342,47 +342,47 @@ func TestCommand(t *testing.T) {
 		testMsg := "testing"
 		testErr := errors.New("this is test error")
 		go func() {
-			res, err := mediator.Send(context.Background(), &TestCommandCommon{
+			result := mediator.Send(context.Background(), &TestCommandCommon{
 				msg:      testMsg,
 				duration: time.Microsecond,
 				err:      testErr,
 			})
 
-			if res != nil {
-				t.Errorf("result should be nil")
+			if result.Value() != nil {
+				t.Errorf("value should be nil")
 			}
 
-			if err != testErr {
-				t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, err)
+			if result.Err() != testErr {
+				t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, result.Err())
 			}
 			wg.Done()
 		}()
 
 		go func() {
-			res, err := mediator.Send(context.Background(), &TestCommandCommon{
+			result := mediator.Send(context.Background(), &TestCommandCommon{
 				msg:      testMsg,
 				duration: time.Microsecond,
 				err:      nil,
 			})
 
-			if err != nil {
-				t.Errorf("got a error when testing command: %v", err)
+			if result.Err() != nil {
+				t.Errorf("got a error when testing command: %v", result.Err())
 			}
 
-			if res.(string) != (testMsg + " 1 visited") {
+			if result.Value().(string) != (testMsg + " 1 visited") {
 				t.Errorf("result should be nil")
 			}
 			wg.Done()
 		}()
 
 		go func() {
-			res, err := mediator.Send(context.Background(), &TestCommand1{msg: testMsg})
+			result := mediator.Send(context.Background(), &TestCommand1{msg: testMsg})
 
-			if err != nil {
-				t.Errorf("got a error when testing command: %v", err)
+			if result.Err() != nil {
+				t.Errorf("got a error when testing command: %v", result.Err())
 			}
 
-			if res.(string) != (testMsg + " 2 visited") {
+			if result.Value().(string) != (testMsg + " 2 visited") {
 				t.Errorf("result should be nil")
 			}
 			wg.Done()
@@ -402,18 +402,18 @@ func TestCommand(t *testing.T) {
 		testMsg := "testing"
 		testErr := errors.New("this is test error")
 		ctx, _ := context.WithTimeout(context.Background(), time.Second)
-		res, err := mediator.Send(ctx, &TestCommandCommon{
+		result := mediator.Send(ctx, &TestCommandCommon{
 			msg:      testMsg,
 			duration: time.Second * 10000,
 			err:      testErr,
 		})
 
-		if res != nil {
+		if result.Value() != nil {
 			t.Errorf("result should be nil")
 		}
 
-		if err != context.DeadlineExceeded {
-			t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, err)
+		if result.Err() != context.DeadlineExceeded {
+			t.Errorf("error doesn't match. expect: %v, actual: %v", testErr, result.Err())
 		}
 	})
 }
@@ -442,16 +442,16 @@ func TestMediator(t *testing.T) {
 		Build()
 
 	t.Run("not mapping event test", func(t *testing.T) {
-		err := mediator.Publish(context.TODO(), new(NotHandlerEvent))
-		if !strings.Contains(err.Error(), ErrorNotEventHandler) {
-			t.Errorf("error not contains message, expect: %v, actual: %v", ErrorNotEventHandler, err.Error())
+		result := mediator.Publish(context.TODO(), new(NotHandlerEvent))
+		if !strings.Contains(result.Err().Error(), ErrorNotEventHandler) {
+			t.Errorf("error not contains message, expect: %v, actual: %v", ErrorNotEventHandler, result.Err().Error())
 		}
 	})
 
 	t.Run("not mapping command test", func(t *testing.T) {
-		_, err := mediator.Send(context.TODO(), new(NotHandlerCommand))
-		if !strings.Contains(err.Error(), ErrorNotCommandHandler) {
-			t.Errorf("error not contains message, expect: %v, actual: %v", ErrorNotCommandHandler, err.Error())
+		result := mediator.Send(context.TODO(), new(NotHandlerCommand))
+		if !strings.Contains(result.Err().Error(), ErrorNotCommandHandler) {
+			t.Errorf("error not contains message, expect: %v, actual: %v", ErrorNotCommandHandler, result.Err().Error())
 		}
 	})
 
@@ -486,26 +486,26 @@ func TestMediator(t *testing.T) {
 	})
 
 	t.Run("publish event validation test", func(t *testing.T) {
-		err := mediator.Publish(context.TODO(), nil)
+		result := mediator.Publish(context.TODO(), nil)
 
-		if err == nil {
+		if result.Err() == nil {
 			t.Error("expect error when using nil")
 		}
 
-		if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
-			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+		if !strings.Contains(result.Err().Error(), ErrorInvalidArgument) {
+			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, result.Err().Error())
 		}
 	})
 
 	t.Run("send command validation test", func(t *testing.T) {
-		_, err := mediator.Send(nil, new(TestCommand1))
+		result := mediator.Send(nil, new(TestCommand1))
 
-		if err == nil {
+		if result.Err() == nil {
 			t.Error("expect error when using nil")
 		}
 
-		if !strings.Contains(err.(error).Error(), ErrorInvalidArgument) {
-			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, err)
+		if !strings.Contains(result.Err().Error(), ErrorInvalidArgument) {
+			t.Errorf("wrong error message, want: %v, got: %v", ErrorInvalidArgument, result.Err())
 		}
 	})
 }
@@ -549,9 +549,9 @@ func TestDefaultRoutinePool(t *testing.T) {
 	t.Run("event test", func(t *testing.T) {
 		msg := "just testing"
 		event := &TestEvent2{msg: msg}
-		err := mediator.Publish(context.Background(), event)
-		if err != nil {
-			t.Errorf("got error: %+v", err)
+		result := mediator.Publish(context.Background(), event)
+		if result.Err() != nil {
+			t.Errorf("got error: %+v", result.Err())
 		}
 		if event.handler1 != true || event.handler2 != true || event.handler3 != true {
 			t.Error("some handler are missing")
@@ -568,23 +568,23 @@ func TestDefaultRoutinePool(t *testing.T) {
 					msg := "Testing"
 
 					event1 := &TestEvent1{msg: msg}
-					err := mediator.Publish(context.Background(), event1)
-					if err != nil {
-						t.Errorf("got error: %+v", err)
+					result1 := mediator.Publish(context.Background(), event1)
+					if result1.Err() != nil {
+						t.Errorf("got error: %+v", result1.Err())
 					}
-					res, err := mediator.Send(context.Background(), &TestCommandCommon{
+					result2 := mediator.Send(context.Background(), &TestCommandCommon{
 						msg: msg,
 						err: nil,
 					})
-					if err != nil {
-						t.Errorf("got a error when testing command: %v", err)
+					if result2.Err() != nil {
+						t.Errorf("got a error when testing command: %v", result2.Err())
 					}
 
 					res1 := msg + " 1 visited"
 					if event1.msg != res1 {
 						t.Error("result not match")
 					}
-					if res.(string) != (msg + " 1 visited") {
+					if result2.Value().(string) != (msg + " 1 visited") {
 						t.Errorf("result doesn't match")
 					}
 				}
@@ -625,11 +625,11 @@ func TestDefaultRoutinePool(t *testing.T) {
 		}
 
 		time.Sleep(time.Millisecond * 100)
-		_, err := mediator.Send(context.TODO(), &TestCommandCommon{
+		result := mediator.Send(context.TODO(), &TestCommandCommon{
 			msg: "adjust test",
 		})
-		if err != ants.ErrPoolOverload {
-			t.Errorf("want got error %v, but got %v", ants.ErrPoolOverload, err)
+		if result.Err() != ants.ErrPoolOverload {
+			t.Errorf("want got error %v, but got %v", ants.ErrPoolOverload, result.Err())
 		}
 	})
 
@@ -667,20 +667,20 @@ func TestDefaultRoutinePool(t *testing.T) {
 
 		wg.Wait()
 		time.Sleep(time.Millisecond * 10)
-		_, err := mediator.Send(context.TODO(), &TestCommandCommon{
+		result := mediator.Send(context.TODO(), &TestCommandCommon{
 			msg: "adjust test",
 		})
-		if err != nil {
-			t.Errorf("got error %+v", err)
+		if result.Err() != nil {
+			t.Errorf("got error %+v", result.Err())
 		}
 	})
 
 	t.Run("panic test", func(t *testing.T) {
 		panicEvent := &PanicEvent{msg: "just panic"}
-		err := mediator.Publish(context.TODO(), panicEvent)
+		result := mediator.Publish(context.TODO(), panicEvent)
 		expectErrMsg := "got panic when running *mediator_test.PanicEvent event, cause: " + panicEvent.msg
-		if err.Error() != expectErrMsg {
-			t.Errorf("error not match, expect: %v, actual : %v", expectErrMsg, err.Error())
+		if result.Err().Error() != expectErrMsg {
+			t.Errorf("error not match, expect: %v, actual : %v", expectErrMsg, result.Err().Error())
 		}
 	})
 }
