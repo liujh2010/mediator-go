@@ -209,9 +209,10 @@ func TestEvent(t *testing.T) {
 		if result.Err() == nil {
 			t.Errorf("expect a error but not got")
 		}
-		expectErrMsg := "TestEvent2HandlerWithError1; TestEvent2HandlerWithError2"
+		expectErrMsg := "TestEvent2HandlerWithError1\nTestEvent2HandlerWithError2\n"
 		if result.Err().Error() != expectErrMsg {
-			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, result)
+			errStr := result.Err().Error()
+			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, errStr)
 		}
 	})
 }
@@ -681,7 +682,7 @@ func TestDefaultRoutinePool(t *testing.T) {
 		panicEvent := &PanicEvent{msg: "just panic"}
 		result := mediator.Publish(context.TODO(), panicEvent)
 		expectErrMsg := "got panic when running *mediator_test.PanicEvent event, cause: " + panicEvent.msg
-		if result.Err().Error() != expectErrMsg {
+		if !strings.Contains(result.Err().Error(), expectErrMsg) {
 			t.Errorf("error not match, expect: %v, actual : %v", expectErrMsg, result.Err().Error())
 		}
 	})
@@ -736,7 +737,7 @@ func TestResult(t *testing.T) {
 		if result.HasError() != true {
 			t.Error("expect result.HasError() return true, but got false")
 		}
-		if result.Err().Error() != msg {
+		if !strings.Contains(result.Err().Error(), msg) {
 			t.Errorf("wrong error message, expect: %v, actual: %v", msg, result.Err().Error())
 		}
 	})

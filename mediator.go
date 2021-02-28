@@ -102,12 +102,12 @@ func New(options ...Option) IMediatorBuilder {
 func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
 	result := &Result{}
 	if ctx == nil || event == nil {
-		return result.setErr(errors.New((ErrorInvalidArgument + " ctx or event")))
+		return result.SetErr(errors.New((ErrorInvalidArgument + " ctx or event")))
 	}
 
 	handlers, ok := m.eventHandlerMap[event.Type()]
 	if !ok {
-		return result.setErr(
+		return result.SetErr(
 			errors.Errorf("Publish: %s -> %v", ErrorNotEventHandler, event.Type().String()),
 		)
 	}
@@ -140,7 +140,7 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
 			})
 
 		}(handler); poolErr != nil {
-			return result.setErr(poolErr)
+			return result.SetErr(poolErr)
 		}
 
 	}
@@ -148,11 +148,11 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
 	select {
 	case <-waitAllDone(doneSilce):
 		if errNoti.HasError() {
-			return result.setErr(errNoti)
+			return result.SetErr(errNoti)
 		}
 		return result
 	case <-ctx.Done():
-		return result.setErr(ctx.Err())
+		return result.SetErr(ctx.Err())
 	}
 }
 
@@ -160,12 +160,12 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
 func (m *Mediator) Send(ctx context.Context, command IRequest) IResult {
 	result := &Result{}
 	if ctx == nil || command == nil {
-		return result.setErr(errors.New(ErrorInvalidArgument + " ctx or command"))
+		return result.SetErr(errors.New(ErrorInvalidArgument + " ctx or command"))
 	}
 
 	handler, ok := m.commandHandlerMap[command.Type()]
 	if !ok {
-		return result.setErr(errors.Errorf("Send: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
+		return result.SetErr(errors.Errorf("Send: %s -> %v", ErrorNotCommandHandler, command.Type().String()))
 	}
 
 	done := make(chan struct{})
@@ -187,16 +187,16 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) IResult {
 		data, err = handler.Handle(ctx, command)
 		close(done)
 	}); poolErr != nil {
-		return result.setErr(poolErr)
+		return result.SetErr(poolErr)
 	}
 
 	select {
 	case <-done:
 		return result.
-			setVal(data).
-			setErr(err)
+			SetVal(data).
+			SetErr(err)
 	case <-ctx.Done():
-		return result.setErr(ctx.Err())
+		return result.SetErr(ctx.Err())
 	}
 }
 
@@ -279,6 +279,10 @@ func (e *ErrorNotification) Errors() []error {
 }
 
 func (e *ErrorNotification) Error() string {
+	if len(e.errors) < 1 {
+		return ""
+	}
+
 	strBuilder := &strings.Builder{}
 	for _, err := range e.errors {
 		strBuilder.WriteString(fmt.Sprintf("%+v\n", err))
@@ -466,12 +470,14 @@ func (r Result) HasValue() bool {
 	return r.value != nil
 }
 
-func (r *Result) setErr(err error) *Result {
+// SetErr ...
+func (r *Result) SetErr(err error) *Result {
 	r.err = err
 	return r
 }
 
-func (r *Result) setVal(val interface{}) *Result {
+// SetVal ...
+func (r *Result) SetVal(val interface{}) *Result {
 	r.value = val
 	return r
 }

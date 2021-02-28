@@ -11,19 +11,24 @@ type (
 		Type() reflect.Type
 	}
 
-	// INotificationHandler ...
-	INotificationHandler interface {
-		Handle(ctx context.Context, event INotification) error
-	}
-
 	// IRequest ...
 	IRequest interface {
 		INotification
 	}
 
+	// INotificationHandler ...
+	INotificationHandler interface {
+		Handle(ctx context.Context, event INotification) error
+	}
+
 	// IRequestHandler ...
 	IRequestHandler interface {
 		Handle(ctx context.Context, command IRequest) (interface{}, error)
+	}
+
+	// IBehaviorHandler ...
+	IBehaviorHandler interface {
+		Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext
 	}
 
 	// IMediator ...
@@ -60,5 +65,12 @@ type (
 		ValueT(ptr interface{})
 		HasError() bool
 		HasValue() bool
+	}
+
+	// IResultContext ...
+	IResultContext interface {
+		IResult
+		SetErr(err error)
+		SetVal(val interface{})
 	}
 )
