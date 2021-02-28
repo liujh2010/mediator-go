@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	pkgerr "github.com/pkg/errors"
+
 	. "github.com/liujh2010/mediator"
 	"github.com/panjf2000/ants/v2"
 )
@@ -794,5 +796,60 @@ func TestResult(t *testing.T) {
 		if !strings.Contains(resString, msg) {
 			t.Errorf("wrong value, expect contains: %v, actual value: %v", msg, resString)
 		}
+	})
+}
+
+type (
+	MultiErrEvent         struct{}
+	MultiErrEventHandler1 struct{}
+	MultiErrEventHandler2 struct{}
+	MultiErrEventHandler3 struct{}
+)
+
+func (e *MultiErrEvent) Type() reflect.Type {
+	return reflect.TypeOf(e)
+}
+
+func (h *MultiErrEventHandler1) Handle(ctx context.Context, event INotification) error {
+	return pkgerr.New("MutilErrEventHandler[1]")
+}
+
+func (h *MultiErrEventHandler2) Handle(ctx context.Context, event INotification) error {
+	return pkgerr.New("MutilErrEventHandler[2]")
+}
+
+func (h *MultiErrEventHandler3) Handle(ctx context.Context, event INotification) error {
+	return pkgerr.New("MutilErrEventHandler[3]")
+}
+
+func TestErrorNotification(t *testing.T) {
+	mediator := New(
+		SetRoutinePool(
+			new(TestRoutinePool),
+		),
+	).
+		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+		RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+		RegisterEventHandler(new(ErrEvent).Type(), new(ErrEventHandler)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler1)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler2)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler3)).
+		RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+		RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+		Build()
+
+	t.Run("multi error test", func(t *testing.T) {
+		result := mediator.Publish(context.TODO(), new(MultiErrEvent))
+		if !result.HasError() {
+			t.Error("expect an error, but not got")
+		}
+		errNoti := result.Err().(*ErrorNotification)
+		if len(errNoti.Errors()) != 3 {
+			t.Errorf("wrong error number, expect: %v, actual: %v", 3, len(errNoti.Errors()))
+		}
+		t.Logf("TestErrorNotification: the errNoti is: %v\n", errNoti)
 	})
 }
