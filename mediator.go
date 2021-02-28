@@ -6,12 +6,12 @@ import (
 	"log"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/pkg/errors"
-	"go.uber.org/multierr"
 )
 
 var (
@@ -279,7 +279,11 @@ func (e *ErrorNotification) Errors() []error {
 }
 
 func (e *ErrorNotification) Error() string {
-	return multierr.Combine(e.errors...).Error()
+	strBuilder := &strings.Builder{}
+	for _, err := range e.errors {
+		strBuilder.WriteString(fmt.Sprintf("%+v\n", err))
+	}
+	return strBuilder.String()
 }
 
 const (
