@@ -684,3 +684,115 @@ func TestDefaultRoutinePool(t *testing.T) {
 		}
 	})
 }
+
+type (
+	ErrEvent struct {
+		msg string
+	}
+
+	ErrEventHandler struct{}
+)
+
+func (e *ErrEvent) Type() reflect.Type {
+	return reflect.TypeOf(e)
+}
+
+func (h *ErrEventHandler) Handle(ctx context.Context, event INotification) error {
+	return errors.New(event.(*ErrEvent).msg)
+}
+
+func TestResult(t *testing.T) {
+	mediator := New(
+		SetRoutinePool(
+			new(TestRoutinePool),
+		),
+	).
+		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+		RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+		RegisterEventHandler(new(ErrEvent).Type(), new(ErrEventHandler)).
+		RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+		RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+		Build()
+
+	t.Run("publish event error test", func(t *testing.T) {
+		result := mediator.Publish(context.TODO(), &TestEvent1{
+			msg: "no error",
+		})
+
+		if result.HasError() != false {
+			t.Error("expect result.HasError() return false, but got true")
+		}
+
+		msg := "this is an error"
+		result = mediator.Publish(context.TODO(), &ErrEvent{
+			msg: msg,
+		})
+
+		if result.HasError() != true {
+			t.Error("expect result.HasError() return true, but got false")
+		}
+		if result.Err().Error() != msg {
+			t.Errorf("wrong error message, expect: %v, actual: %v", msg, result.Err().Error())
+		}
+	})
+
+	t.Run("publish event value test", func(t *testing.T) {
+		result := mediator.Publish(context.TODO(), &TestEvent1{
+			msg: "no error",
+		})
+
+		if result.HasError() != false {
+			t.Error("expect result.HasError() return false, but got true")
+		}
+		if result.HasValue() != false {
+			t.Error("expect result.HasValue() return false, but got true")
+		}
+		if result.Value() != nil {
+			t.Errorf("expect result.Value() return nil, but got %v", result.Value())
+		}
+	})
+
+	t.Run("send command error test", func(t *testing.T) {
+		msg := "this is a command error test"
+		result := mediator.Send(context.TODO(), &TestCommandCommon{
+			msg:      "this is a test",
+			duration: 0,
+			err:      errors.New(msg),
+		})
+
+		if result.HasError() == false {
+			t.Error("expect result.HasError() return true, but got false")
+		}
+		if !strings.Contains(result.Err().Error(), msg) {
+			t.Errorf("wrong error message, expect contains: %v, actual massage: %v", msg, result.Err().Error())
+		}
+	})
+
+	t.Run("send command value test", func(t *testing.T) {
+		msg := "this is a test"
+		result := mediator.Send(context.TODO(), &TestCommandCommon{
+			msg:      msg,
+			duration: 0,
+			err:      nil,
+		})
+
+		if result.HasError() == true {
+			t.Error("expect result.HasError() return false, but got true")
+		}
+		if result.HasValue() != true {
+			t.Error("expect result.HasValue() return true, but got false")
+		}
+
+		var resString string
+		result.ValueT(&resString)
+		if resString != result.Value().(string) {
+			t.Errorf("value not equal between result.ValueT() -> %v and resul.Value() -> %v", resString, result.Value().(string))
+		}
+		if !strings.Contains(resString, msg) {
+			t.Errorf("wrong value, expect contains: %v, actual value: %v", msg, resString)
+		}
+	})
+}
