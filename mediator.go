@@ -449,7 +449,7 @@ func (r Result) Value() interface{} {
 
 // ValueT ...
 func (r Result) ValueT(ptr interface{}) {
-	reflect.ValueOf(ptr).Set(reflect.ValueOf(r.value))
+	reflect.ValueOf(ptr).Elem().Set(reflect.ValueOf(r.value))
 }
 
 // HasError ...
