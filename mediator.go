@@ -33,26 +33,29 @@ const (
 	ErrorInvalidArgument = "invalid argument"
 )
 
-// Mediator ...
-type Mediator struct {
-	mediatorConfig
-	mut               *sync.Mutex
-	eventHandlerMap   map[reflect.Type][]INotificationHandler
-	commandHandlerMap map[reflect.Type]IRequestHandler
-}
+type (
+	// Mediator ...
+	Mediator struct {
+		mediatorConfig
+		mut                    *sync.Mutex
+		eventHandlerMap        map[reflect.Type][]INotificationHandler
+		commandHandlerMap      map[reflect.Type]IRequestHandler
+		behaviorPipelineRunner *behaviorPipelineRunner
+	}
 
-type mediatorConfig struct {
-	logger ILogger
-	pool   IRoutinePool
-}
+	mediatorConfig struct {
+		logger ILogger
+		pool   IRoutinePool
+	}
 
-// Option ...
-type Option interface {
-	applyOption(config *mediatorConfig)
-}
+	// Option ...
+	Option interface {
+		applyOption(config *mediatorConfig)
+	}
 
-// OptionFunc ...
-type OptionFunc func(config *mediatorConfig)
+	// OptionFunc ...
+	OptionFunc func(config *mediatorConfig)
+)
 
 func (f OptionFunc) applyOption(config *mediatorConfig) { f(config) }
 
@@ -90,12 +93,21 @@ func New(options ...Option) IMediatorBuilder {
 		config.pool = NewRoutinePool(config.logger)
 	}
 
-	return &Mediator{
-		mut:               &sync.Mutex{},
-		eventHandlerMap:   make(map[reflect.Type][]INotificationHandler),
-		commandHandlerMap: make(map[reflect.Type]IRequestHandler),
-		mediatorConfig:    *config,
+	mediator := &Mediator{
+		mut:                    &sync.Mutex{},
+		eventHandlerMap:        make(map[reflect.Type][]INotificationHandler),
+		commandHandlerMap:      make(map[reflect.Type]IRequestHandler),
+		behaviorPipelineRunner: &behaviorPipelineRunner{},
+		mediatorConfig:         *config,
 	}
+
+	mediator.behaviorPipelineRunner.register(newBehaviorHandlerWrapper(
+		func(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
+			return mediator.send(ctx, command)
+		},
+	))
+
+	return mediator
 }
 
 // Publish ...
@@ -158,6 +170,10 @@ func (m *Mediator) Publish(ctx context.Context, event INotification) IResult {
 
 // Send ...
 func (m *Mediator) Send(ctx context.Context, command IRequest) IResult {
+	return m.behaviorPipelineRunner.run(ctx, command)
+}
+
+func (m *Mediator) send(ctx context.Context, command IRequest) IResultContext {
 	result := &Result{}
 	if ctx == nil || command == nil {
 		return result.SetErr(errors.New(ErrorInvalidArgument + " ctx or command"))
@@ -198,6 +214,18 @@ func (m *Mediator) Send(ctx context.Context, command IRequest) IResult {
 	case <-ctx.Done():
 		return result.SetErr(ctx.Err())
 	}
+}
+
+// RegisterBehaviorHandler ...
+func (m *Mediator) RegisterBehaviorHandler(behaviorHandler IBehaviorHandler) IMediatorBuilder {
+	if behaviorHandler == nil {
+		panic(errors.New(ErrorInvalidArgument + " behaviorHandler"))
+	}
+
+	m.mutex(func() {
+		m.behaviorPipelineRunner.register(behaviorHandler)
+	})
+	return m
 }
 
 // RegisterEventHandler ...
@@ -304,28 +332,32 @@ const (
 	DefaultIsBlockingPool = false
 )
 
-// DefaultRoutinePool ...
-type DefaultRoutinePool struct {
-	poolConfig
-	logger ILogger
-	pool   *ants.Pool
-}
+var _ IRoutinePool = (*DefaultRoutinePool)(nil)
 
-type poolConfig struct {
-	initialPoolSize  int
-	maxPoolSize      int
-	submitRetryCount int
-	isBlockingPool   bool
-	logger           ILogger
-}
+type (
+	// DefaultRoutinePool ...
+	DefaultRoutinePool struct {
+		poolConfig
+		logger ILogger
+		pool   *ants.Pool
+	}
 
-// DefaultRoutinePoolOption ...
-type DefaultRoutinePoolOption interface {
-	applyOption(config *poolConfig)
-}
+	poolConfig struct {
+		initialPoolSize  int
+		maxPoolSize      int
+		submitRetryCount int
+		isBlockingPool   bool
+		logger           ILogger
+	}
 
-// DefaultRoutinePoolOptionFunc ...
-type DefaultRoutinePoolOptionFunc func(config *poolConfig)
+	// DefaultRoutinePoolOption ...
+	DefaultRoutinePoolOption interface {
+		applyOption(config *poolConfig)
+	}
+
+	// DefaultRoutinePoolOptionFunc ...
+	DefaultRoutinePoolOptionFunc func(config *poolConfig)
+)
 
 func (f DefaultRoutinePoolOptionFunc) applyOption(config *poolConfig) { f(config) }
 
@@ -426,6 +458,8 @@ func (p *DefaultRoutinePool) Publish(t ITask) error {
 	return err
 }
 
+var _ ILogger = (*DefaultLogger)(nil)
+
 // DefaultLogger ...
 type DefaultLogger struct{}
 
@@ -438,6 +472,11 @@ func (l *DefaultLogger) Printf(format string, messages ...interface{}) {
 func (l *DefaultLogger) Errorf(format string, messages ...interface{}) {
 	log.Printf(format, messages...)
 }
+
+var (
+	_ IResult        = (*Result)(nil)
+	_ IResultContext = (*Result)(nil)
+)
 
 // Result ...
 type Result struct {
@@ -471,13 +510,64 @@ func (r Result) HasValue() bool {
 }
 
 // SetErr ...
-func (r *Result) SetErr(err error) *Result {
+func (r *Result) SetErr(err error) IResultContext {
 	r.err = err
 	return r
 }
 
 // SetVal ...
-func (r *Result) SetVal(val interface{}) *Result {
+func (r *Result) SetVal(val interface{}) IResultContext {
 	r.value = val
 	return r
+}
+
+var (
+	// _ IBehaviorHandler = (*DefaultBehaviorHandler)(nil)
+	_ IBehaviorHandler = (*behaviorHandlerWrapper)(nil)
+)
+
+type (
+	// behaviorPipelineRunner ...
+	behaviorPipelineRunner struct {
+		behaviors []IBehaviorHandler
+	}
+	// DefaultBehaviorHandler        struct{}
+	// DefaultBehaviorHandlerWrapper ...
+	behaviorHandlerWrapper BehaviorHandlerFunc
+)
+
+func (r *behaviorPipelineRunner) register(handler IBehaviorHandler) *behaviorPipelineRunner {
+	newBehaviorsChain := make([]IBehaviorHandler, len(r.behaviors)+1)
+	newBehaviorsChain[0] = handler
+
+	for i, h := range r.behaviors {
+		newBehaviorsChain[i+1] = h
+	}
+	r.behaviors = newBehaviorsChain
+
+	return r
+}
+
+func (r *behaviorPipelineRunner) run(ctx context.Context, command IRequest) IResultContext {
+	next := r.buildNext(0, command)
+	return next(ctx)
+}
+
+func (r *behaviorPipelineRunner) buildNext(index int, command IRequest) func(ctx context.Context) IResultContext {
+	return func(ctx context.Context) IResultContext {
+		if index < len(r.behaviors) {
+			return r.behaviors[index].Handle(ctx, command, r.buildNext(index+1, command))
+		}
+		return nil
+	}
+}
+
+// NewDefaultBehaviorHandlerWrapper ...
+func newBehaviorHandlerWrapper(fn BehaviorHandlerFunc) IBehaviorHandler {
+	return behaviorHandlerWrapper(fn)
+}
+
+// Handle ...
+func (fn behaviorHandlerWrapper) Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
+	return fn(ctx, command, next)
 }

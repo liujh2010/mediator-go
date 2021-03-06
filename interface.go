@@ -26,6 +26,9 @@ type (
 		Handle(ctx context.Context, command IRequest) (interface{}, error)
 	}
 
+	// BehaviorHandlerFunc ...
+	BehaviorHandlerFunc func(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext
+
 	// IBehaviorHandler ...
 	IBehaviorHandler interface {
 		Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext
@@ -39,9 +42,10 @@ type (
 
 	// IMediatorBuilder ...
 	IMediatorBuilder interface {
+		Build() IMediator
+		RegisterBehaviorHandler(handler IBehaviorHandler) IMediatorBuilder
 		RegisterEventHandler(matchingType reflect.Type, eventHandler INotificationHandler) IMediatorBuilder
 		RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder
-		Build() IMediator
 	}
 
 	// ITask ...
@@ -70,7 +74,7 @@ type (
 	// IResultContext ...
 	IResultContext interface {
 		IResult
-		SetErr(err error)
-		SetVal(val interface{})
+		SetErr(err error) IResultContext
+		SetVal(val interface{}) IResultContext
 	}
 )
