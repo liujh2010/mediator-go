@@ -48,6 +48,20 @@ type (
 		RegisterCommandHandler(matchingType reflect.Type, commandHandler IRequestHandler) IMediatorBuilder
 	}
 
+	// IMediatorSugar ...
+	IMediatorSugar interface {
+		Publish(ctx context.Context, event interface{}) IResult
+		Send(ctx context.Context, command interface{}) IResult
+	}
+
+	// IMediatorBuilderSugar ...
+	IMediatorBuilderSugar interface {
+		Build() IMediatorSugar
+		RegisterBehaviorHandler(handler func(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext) IMediatorBuilderSugar
+		RegisterEventHandler(event interface{}, handler func(ctx context.Context, event INotification) error) IMediatorBuilderSugar
+		RegisterCommandHandler(command interface{}, handler func(ctx context.Context, command IRequest) (interface{}, error)) IMediatorBuilderSugar
+	}
+
 	// ITask ...
 	ITask func()
 
