@@ -3,6 +3,7 @@ package mediator_test
 import (
 	"context"
 	"errors"
+	"log"
 	"reflect"
 	"strings"
 	"sync"
@@ -209,9 +210,10 @@ func TestEvent(t *testing.T) {
 		if result.Err() == nil {
 			t.Errorf("expect a error but not got")
 		}
-		expectErrMsg := "TestEvent2HandlerWithError1; TestEvent2HandlerWithError2"
+		expectErrMsg := "TestEvent2HandlerWithError1\nTestEvent2HandlerWithError2\n"
 		if result.Err().Error() != expectErrMsg {
-			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, result)
+			errStr := result.Err().Error()
+			t.Errorf("wrong error msg, expect: %v, actual: %v", expectErrMsg, errStr)
 		}
 	})
 }
@@ -681,7 +683,7 @@ func TestDefaultRoutinePool(t *testing.T) {
 		panicEvent := &PanicEvent{msg: "just panic"}
 		result := mediator.Publish(context.TODO(), panicEvent)
 		expectErrMsg := "got panic when running *mediator_test.PanicEvent event, cause: " + panicEvent.msg
-		if result.Err().Error() != expectErrMsg {
+		if !strings.Contains(result.Err().Error(), expectErrMsg) {
 			t.Errorf("error not match, expect: %v, actual : %v", expectErrMsg, result.Err().Error())
 		}
 	})
@@ -736,7 +738,7 @@ func TestResult(t *testing.T) {
 		if result.HasError() != true {
 			t.Error("expect result.HasError() return true, but got false")
 		}
-		if result.Err().Error() != msg {
+		if !strings.Contains(result.Err().Error(), msg) {
 			t.Errorf("wrong error message, expect: %v, actual: %v", msg, result.Err().Error())
 		}
 	})
@@ -851,5 +853,138 @@ func TestErrorNotification(t *testing.T) {
 			t.Errorf("wrong error number, expect: %v, actual: %v", 3, len(errNoti.Errors()))
 		}
 		t.Logf("TestErrorNotification: the errNoti is: %v\n", errNoti)
+	})
+}
+
+type (
+	CommandForBehavior struct {
+		ID             string
+		LoggingVisited bool
+		PrinterVisited bool
+	}
+	CommandForBehaviorCommandHandler struct{}
+	LoggerCommandBehaviorHandler     struct{}
+	PrintCommandBehaviorHandler      struct{}
+	ValidationCommandBehaviorHandler struct{}
+)
+
+func (c *CommandForBehavior) Type() reflect.Type {
+	return reflect.TypeOf(c)
+}
+
+func (c *CommandForBehaviorCommandHandler) Handle(ctx context.Context, command IRequest) (interface{}, error) {
+	return command.(*CommandForBehavior).ID, nil
+}
+
+func (h *LoggerCommandBehaviorHandler) Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
+	log.Println("LoggerCommandBehaviorHandler: handler command...")
+	cfb, ok := command.(*CommandForBehavior)
+	if ok {
+		cfb.LoggingVisited = true
+	}
+	res := next(ctx)
+	log.Println("LoggerCommandBehaviorHandler: process done.")
+	return res
+}
+
+func (h *PrintCommandBehaviorHandler) Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
+	log.Printf("PrintCommandBehaviorHandler: command: %v\n", command)
+	res := next(ctx)
+	cfb, ok := command.(*CommandForBehavior)
+	if ok {
+		cfb.PrinterVisited = true
+	}
+	return res
+}
+
+func (h *ValidationCommandBehaviorHandler) Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
+	cfb, ok := command.(*CommandForBehavior)
+	if ok {
+		if cfb.ID == "" {
+			return (&Result{}).SetErr(errors.New("ID can't be empty"))
+		}
+	}
+	return next(ctx)
+}
+
+func TestBehaviors(t *testing.T) {
+	mediator := New(
+		SetRoutinePool(
+			new(TestRoutinePool),
+		),
+	).
+		RegisterBehaviorHandler(new(PrintCommandBehaviorHandler)).
+		RegisterBehaviorHandler(new(LoggerCommandBehaviorHandler)).
+		RegisterBehaviorHandler(new(ValidationCommandBehaviorHandler)).
+		RegisterEventHandler(new(TestEvent1).Type(), new(TestEvent1Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler2)).
+		RegisterEventHandler(new(TestEvent2).Type(), new(TestEvent2Handler3)).
+		RegisterEventHandler(new(BlockEvent).Type(), new(BlockEventHandler)).
+		RegisterEventHandler(new(ErrEvent).Type(), new(ErrEventHandler)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler1)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler2)).
+		RegisterEventHandler(new(MultiErrEvent).Type(), new(MultiErrEventHandler3)).
+		RegisterCommandHandler(new(TestCommandCommon).Type(), new(TestCommandCommonHandler)).
+		RegisterCommandHandler(new(TestCommand1).Type(), new(TestCommand1Handler)).
+		RegisterCommandHandler(new(CommandForBehavior).Type(), new(CommandForBehaviorCommandHandler)).
+		Build()
+
+	t.Run("nomal test", func(t *testing.T) {
+		msg := "this is test command for behavior testing"
+		res := mediator.Send(context.TODO(), &TestCommand1{
+			msg: msg,
+		})
+
+		if res.HasError() {
+			t.Errorf("got a error: %v", res.Err())
+		}
+		if !strings.Contains(res.Value().(string), msg) {
+			t.Errorf("wrong return value, expect: %v, actual: %v", msg, res.Value())
+		}
+	})
+
+	t.Run("visited test", func(t *testing.T) {
+		command := &CommandForBehavior{
+			ID:             "id",
+			LoggingVisited: false,
+			PrinterVisited: false,
+		}
+		res := mediator.Send(context.TODO(), command)
+
+		if res.HasError() {
+			t.Errorf("got a error: %v", res.Err())
+		}
+		if res.Value().(string) != command.ID {
+			t.Errorf("wrong return value, expect: %v, actual: %v", command.ID, res.Value())
+		}
+		if command.LoggingVisited == false {
+			t.Errorf("logging behavior handler not visited the command")
+		}
+		if command.PrinterVisited == false {
+			t.Errorf("printer behavior handler not visited the command")
+		}
+	})
+
+	t.Run("validation test", func(t *testing.T) {
+		command := &CommandForBehavior{
+			ID:             "",
+			LoggingVisited: false,
+			PrinterVisited: false,
+		}
+		res := mediator.Send(context.TODO(), command)
+		if res.HasError() == false {
+			t.Errorf("expect got a error when useing empty ID. It should be intercept by validation behavior handler.")
+		}
+		errMsg := "ID can't be empty"
+		if res.Err().Error() != errMsg {
+			t.Errorf("wrong error message, expect: %v, actual: %v", errMsg, res.Err().Error())
+		}
+		if command.LoggingVisited {
+			t.Errorf("expect intercept by validation behavior handler but the logging behavior handler has been handled ")
+		}
+		if command.PrinterVisited {
+			t.Errorf("expect intercept by validation behavior handler but the Printer behavior handler has been handled ")
+		}
 	})
 }
