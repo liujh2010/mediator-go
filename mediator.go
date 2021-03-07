@@ -527,12 +527,9 @@ var (
 )
 
 type (
-	// behaviorPipelineRunner ...
 	behaviorPipelineRunner struct {
 		behaviors []IBehaviorHandler
 	}
-	// DefaultBehaviorHandler        struct{}
-	// DefaultBehaviorHandlerWrapper ...
 	behaviorHandlerWrapper BehaviorHandlerFunc
 )
 
@@ -570,4 +567,91 @@ func newBehaviorHandlerWrapper(fn BehaviorHandlerFunc) IBehaviorHandler {
 // Handle ...
 func (fn behaviorHandlerWrapper) Handle(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext {
 	return fn(ctx, command, next)
+}
+
+type (
+	eventWrapper          func() reflect.Type
+	commandWrapper        func() reflect.Type
+	eventHandlerWrapper   func(ctx context.Context, event INotification) error
+	commandHandlerWrapper func(ctx context.Context, command IRequest) (interface{}, error)
+
+	// MediatorSugar ...
+	MediatorSugar struct {
+		Mediator
+	}
+)
+
+func newEventWrapper(event interface{}) INotification {
+	return eventWrapper(func() reflect.Type {
+		return reflect.TypeOf(event)
+	})
+}
+
+func newCommandWrapper(command interface{}) IRequest {
+	return commandWrapper(func() reflect.Type {
+		return reflect.TypeOf(command)
+	})
+}
+
+func newEventHandlerWrapper(fn func(ctx context.Context, event INotification) error) INotificationHandler {
+	return eventHandlerWrapper(fn)
+}
+
+func newCommandHandlerWrapper(fn func(ctx context.Context, command IRequest) (interface{}, error)) IRequestHandler {
+	return commandHandlerWrapper(fn)
+}
+
+func (fn eventWrapper) Type() reflect.Type {
+	return fn()
+}
+
+func (fn commandWrapper) Type() reflect.Type {
+	return fn()
+}
+
+func (fn eventHandlerWrapper) Handle(ctx context.Context, event INotification) error {
+	return fn(ctx, event)
+}
+
+func (fn commandHandlerWrapper) Handle(ctx context.Context, command IRequest) (interface{}, error) {
+	return fn(ctx, command)
+}
+
+// Publish ...
+func (m *MediatorSugar) Publish(ctx context.Context, event interface{}) IResult {
+	return m.Mediator.Publish(ctx, newEventWrapper(event))
+}
+
+// Send ...
+func (m *MediatorSugar) Send(ctx context.Context, command interface{}) IResult {
+	return m.Mediator.Send(ctx, newCommandWrapper(command))
+}
+
+// Build ...
+func (m *MediatorSugar) Build() IMediatorSugar {
+	return m
+}
+
+// RegisterBehaviorHandler ...
+func (m *MediatorSugar) RegisterBehaviorHandler(handler func(ctx context.Context, command IRequest, next func(ctx context.Context) IResultContext) IResultContext) IMediatorBuilderSugar {
+	m.Mediator.RegisterBehaviorHandler(newBehaviorHandlerWrapper(handler))
+	return m
+}
+
+// RegisterEventHandler ...
+func (m *MediatorSugar) RegisterEventHandler(event interface{}, handler func(ctx context.Context, event INotification) error) IMediatorBuilderSugar {
+	m.Mediator.RegisterEventHandler(
+		newEventWrapper(event).Type(),
+		newEventHandlerWrapper(handler),
+	)
+	return m
+}
+
+// RegisterCommandHandler ...
+func (m *MediatorSugar) RegisterCommandHandler(command interface{}, handler func(ctx context.Context, command IRequest) (interface{}, error)) IMediatorBuilderSugar {
+	m.Mediator.RegisterCommandHandler(
+		newCommandWrapper(command).Type(),
+		newCommandHandlerWrapper(handler),
+	)
+	return m
 }
