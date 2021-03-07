@@ -527,12 +527,9 @@ var (
 )
 
 type (
-	// behaviorPipelineRunner ...
 	behaviorPipelineRunner struct {
 		behaviors []IBehaviorHandler
 	}
-	// DefaultBehaviorHandler        struct{}
-	// DefaultBehaviorHandlerWrapper ...
 	behaviorHandlerWrapper BehaviorHandlerFunc
 )
 
